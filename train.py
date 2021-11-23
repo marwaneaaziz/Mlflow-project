@@ -17,6 +17,14 @@ import shutil
 
 # Scoring method
 def score(model,x_dev,y_dev) : 
+    """
+    This function takes 3 parameters:
+    :param model : the trained model 
+    :param x_dev : the x dev set
+    :param y_dev : the y dev set
+    :returns the accuracy and the roc_auc score
+    """
+
     y_pred = model.predict(x_dev)
     predictions = [round(value) for value in y_pred]
 
@@ -29,10 +37,17 @@ def score(model,x_dev,y_dev) :
     return accuracy,roc_auc
 
 def prepare_data():
-
+    """
+    This function prepare the data
+    Preparation : LabelEncoding + One Hot Encoding + Standard Scaling
+    Returns : x_train, x_dev, y_train, y_dev,x_test
+    """
     app_train = pd.read_csv(r'application_train.csv')
+    print('Initial Training test shape: ', app_train.shape)
     app_train = app_train.dropna()
+    
     app_test = pd.read_csv(r'application_test.csv')
+    print('Initial Testing test shape: ', app_test.shape)
     app_test = app_test.dropna()
 
     # Calculation the number of NaN values and their %
@@ -49,17 +64,16 @@ def prepare_data():
     # Checking the presence of duplicated data
     print("No Presence of duplicated data" if not (app_train.duplicated().any() and app_test.duplicated().any()) else print("Presence of duplicated data"))
 
-    print('Training test shape: ', app_train.shape)
-    print('Testing test shape: ', app_test.shape)
+    
 
-    train_features = train.loc[train['%'] >= 50]
+    train_features = train.loc[train['%'] >= 60]
     for col in train_features.index:
         app_train.drop([str(col)], axis = 1, inplace = True)
         app_test.drop([str(col)], axis = 1, inplace = True)
 
-    print('Training test shape: ', app_train.shape)
-    print('Testing test shape: ', app_test.shape)
+    
 
+    # Label Encoder
     labelencoder = LabelEncoder()
     count = 0
 
@@ -74,20 +88,21 @@ def prepare_data():
                 
             
     print('%i column(s) were label encoded' %count)
-    print('Training test shape: ', app_train.shape)
-    print('Testing test shape: ', app_test.shape)
-
+    
+    # one hot encoding
     app_train = pd.get_dummies(app_train)
     app_test = pd.get_dummies(app_test)
 
-    print('Training test shape: ', app_train.shape)
-    print('Testing test shape: ', app_test.shape)
+    print('Final Training test shape: ', app_train.shape)
+    print('Final Testing test shape: ', app_test.shape)
+    
+    
     # We notice that the training set and the set don't have the same number of variables.
     # One hot encoding created more columns in the training set because there were some categorical variables with categories that
     # are not present in the test set
     # => We use the .align() method to align both sets and remove the columns that are not present in both sets using axis = 1 argument
     # We remove TARGET with align, but we keep track of it since it's only present  in the test set
-#target = app_train['TARGET']
+    #target = app_train['TARGET']
 
     #app_train, app_test = app_train.align(app_test, join='inner', axis=1)
 
@@ -108,16 +123,14 @@ def prepare_data():
     #app_test = app_test[df_features['Variables'].to_numpy()].dropna()
 
 
-    print('Training test shape: ', app_train.shape)
-    print('Testing test shape: ', app_test.shape)
+    
     # We Standardize the data
     
 
 
     
     app_train, app_test = app_train.align(app_test, join='inner', axis=1)
-    print('Training Features shape: ', app_train.shape)
-    print('Testing Features shape: ', app_test.shape)
+    
     scaler = StandardScaler()
     app_train = pd.DataFrame(scaler.fit_transform(app_train),columns = app_train.columns)
 
@@ -125,8 +138,7 @@ def prepare_data():
     
     x_test = pd.DataFrame(scaler.transform(app_test),columns = app_test.columns)
     x_train, x_dev, y_train, y_dev = train_test_split(app_train, target, test_size = 0.2, random_state = 42)
-    print('Training Features shape: ', app_train.shape)
-    print('Testing Features shape: ', app_test.shape)
+    
     pd.DataFrame(x_test).to_csv("test_data.csv",index = False)
     pd.DataFrame(x_test).to_json("test_data.json",orient = "columns")
 
@@ -149,7 +161,7 @@ if __name__ == "__main__" :
     print("Accuracy: %.2f%%" % (accuracy * 100.0),("ROC AUC: %.2f%%" % (roc_auc * 100.0)))
 
     # 2. Random Forest Classifier
-    rfc_model = RandomForestClassifier()
+    rfc_model = RandomForestClassifier(max_depth = 5)
     rfc_model.fit(x_train,y_train)
     accuracy,roc_auc  = score(rfc_model,x_dev,y_dev)
     mlflow.log_metric("rfc_accuracy",accuracy)
@@ -159,7 +171,7 @@ if __name__ == "__main__" :
 
 
     # 3. GradientBoosting Classifier
-    gb_model = GradientBoostingClassifier()
+    gb_model = GradientBoostingClassifier(n_estimators=300, learning_rate = 0.5)
     gb_model.fit(x_train,y_train)
     accuracy,roc_auc = score(gb_model,x_dev,y_dev)
     mlflow.log_metric("gb_accuracy",accuracy)
@@ -174,8 +186,6 @@ if __name__ == "__main__" :
     
     xgb_model_path = "xgb_model.pth"
     xgb_model.save_model(xgb_model_path)
-    mlflow.pyfunc.save_model(xgb_model,"xgboost",artifacts = {
-    "xgb_model": xgb_model_path
-})
+    mlflow.sklearn.save_model(xgb_model,"xgboost")
     mlflow.sklearn.save_model(rfc_model,"randomforest")
     mlflow.sklearn.save_model(gb_model,"gradientboosting")
